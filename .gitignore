@@ -1,0 +1,36 @@
+# Virtual Environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.env
+
+# Database
+*.db
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Model
+ml/models/
+
+# Logs
+logs/
+
+# Raw Data
+data/raw/
+
+# Processed Data
+data/processed/
