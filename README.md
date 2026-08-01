@@ -1,4 +1,25 @@
+# FATE (Financial Analysis Trend Engine)
 
+> **생성형 AI 기반 금융 고객 분석 및 의사결정 지원 시스템**
+
+FATE는 정제된 금융 데이터와 AI 기술을 결합하여 고객 행동 분석, 이상 탐지, 그리고 데이터 기반의 신속한 의사결정을 지원하는 종합 데이터 파이프라인 플랫폼입니다.
+
+---
+
+## 프로젝트 개요
+
+* **프로젝트명:** FATE (Financial Analysis Trend Engine)
+* **핵심 컨셉:** 금융 데이터 분석 및 생성형 AI 기반의 이상 탐지 / 레포팅 플랫폼
+* **주요 역할:** 데이터 엔지니어링부터 시각화, AI 인텔리전스 제공까지 전 과정을 아우르는 엔드투엔드(End-to-End) 솔루션
+
+---
+
+## 🛠️ 핵심 기능 및 흐름
+
+```text
+[ Data Engineering ] ➔ [ Data Analysis ] ➔ [ Visualization ] ➔ [ AI Decision Support ]
+    (ETL Pipeline)        (EDA & ML)         (Dashboards)          (LLM Insights)
+```
 
 ## 프로젝트 소개
 
