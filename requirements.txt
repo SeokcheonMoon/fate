@@ -23,6 +23,7 @@ lightgbm
 # ==========================
 SQLAlchemy
 pymysql
+python-dotenv
 
 # ==========================
 # API / Crawling
