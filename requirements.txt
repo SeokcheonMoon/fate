@@ -9,6 +9,7 @@ numpy
 # ==========================
 matplotlib
 plotly
+seaborn
 
 # ==========================
 # Machine Learning

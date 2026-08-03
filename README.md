@@ -1,8 +1,8 @@
 # FATE (Financial Analysis Trend Engine)
 
-> **생성형 AI 기반 금융 고객 분석 및 의사결정 지원 시스템**
+> **생성형 AI 기반 금융시장 분석 및 투자 의사결정 지원 시스템**
 
-FATE는 정제된 금융 데이터와 AI 기술을 결합하여 고객 행동 분석, 이상 탐지, 그리고 데이터 기반의 신속한 의사결정을 지원하는 종합 데이터 파이프라인 플랫폼입니다.
+FATE는 정제된 금융시장 데이터를 기반으로 주가 흐름 예측 및 LLM 기반 투자 분석 서비스를 제공하는 AI 금융 플랫폼입니다.
 
 ---
 
@@ -28,7 +28,27 @@ FATE는 정제된 금융 데이터와 AI 기술을 결합하여 고객 행동 �
 ## 사용 기술
 
 ## 시스템 아키텍처
-
+```
+Data Source
+    |
+    ↓
+ETL Pipeline
+    |
+    ↓
+MySQL Data Warehouse
+    |
+    ↓
+Feature Engineering
+    |
+    ↓
+ML Prediction
+    |
+    ↓
+LLM Decision Support
+    |
+    ↓
+Dashboard
+```
 ## 프로젝트 구조
 
 ```
@@ -54,10 +74,10 @@ FATE/
 │   └── feature/
 │
 ├── etl/
-│   ├── customer_loader.py
 │   ├── stock_loader.py
 │   ├── news_loader.py
-│   └── market_loader.py
+│   ├── market_loader.py
+│   └── preprocessing.py
 │
 ├── analysis/
 │   ├── eda.ipynb
@@ -65,10 +85,12 @@ FATE/
 │   └── visualization.ipynb
 │
 ├── ml/
-│   ├── segmentation.py
-│   ├── churn_prediction.py
-│   ├── anomaly_detection.py
+│   ├── train.py
+│   ├── prediction.py
+│   ├── evaluate.py
 │   └── models/
+│       ├── xgboost.pkl
+│       └── lstm.pth
 │
 ├── llm/
 │   ├── prompt.py
@@ -76,8 +98,6 @@ FATE/
 │   └── chatbot.py
 │
 ├── dashboard/
-│
-├── streamlit/
 │   └── app.py
 │
 ├── docs/
