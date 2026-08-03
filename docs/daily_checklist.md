@@ -7,3 +7,10 @@
 #### -  Python 가상환경 생성 및 활성화
 #### -  pip install -r requirements.txt 실행
 #### -  MySQL 설치 및 접속 확인
+
+## Step 2. 데이터베이스 환경 구축 (8/3~)
+
+#### - MySQL 사용 결정
+#### - fate 데이터베이스 생성
+#### - MySQL DB 생성
+#### - Python DB 연결

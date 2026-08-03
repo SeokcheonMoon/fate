@@ -29,7 +29,7 @@ FATE는 정제된 금융시장 데이터를 기반으로 주가 흐름 예측 �
 
 ## 시스템 아키텍처
 ```
-Data Source
+Data Source (주가 데이터 API ＋ 경제 지표 API ＋ 뉴스 크롤링)
     |
     ↓
 ETL Pipeline
