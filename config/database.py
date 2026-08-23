@@ -1,8 +1,8 @@
 import os
-from urllib.parse import quote_plus  # 특수문자 안전 인코딩용 추가
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 # .env 불러오기
 load_dotenv()
@@ -30,5 +30,18 @@ DATABASE_URL = (
 # DB Engine 생성
 engine = create_engine(
     DATABASE_URL,
-    echo=True
+    echo=True,          # 개발 중 SQL 실행 로그 출력
+    pool_pre_ping=True  # 끊긴 연결을 사용 전 확인
 )
+
+
+def test_connection():
+    """MySQL 연결 및 현재 데이터베이스 확인"""
+    with engine.connect() as connection:
+        result = connection.execute(text("SELECT DATABASE()"))
+        return result.scalar()
+
+
+if __name__ == "__main__":
+    database_name = test_connection()
+    print(f"DB 연결 성공: {database_name}")
