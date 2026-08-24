@@ -1,4 +1,5 @@
-from pykrx import stock
+import FinanceDataReader as fdr
+import pandas as pd
 from sqlalchemy import text
 
 from config.database import engine
@@ -49,10 +50,11 @@ def save_etl_log(
 
 
 def load_stock_prices(ticker: str, start_date: str, end_date: str):
-    """pykrx 일별 주가 데이터를 MySQL stock_prices 테이블에 저장한다."""
+    """일별 주가 데이터를 MySQL stock_prices 테이블에 저장한다."""
 
-    # KRX에서 주가 데이터 조회
-    df = stock.get_market_ohlcv(start_date, end_date, ticker)
+    # FinanceDataReader의 NAVER 소스에서 일별 OHLCV를 조회한다.
+    # KRX 인증 정책 변경에도 계정 없이 종목별 가격을 수집할 수 있다.
+    df = fdr.DataReader(f"NAVER:{ticker}", start_date, end_date)
 
     # 조회된 데이터가 없으면 로그만 남기고 종료
     if df.empty:
@@ -70,14 +72,17 @@ def load_stock_prices(ticker: str, start_date: str, end_date: str):
     df = df.reset_index()
     df = df.rename(
         columns={
-            "날짜": "trade_date",
-            "시가": "open_price",
-            "고가": "high_price",
-            "저가": "low_price",
-            "종가": "close_price",
-            "거래량": "volume",
+            "Date": "trade_date",
+            "Open": "open_price",
+            "High": "high_price",
+            "Low": "low_price",
+            "Close": "close_price",
+            "Volume": "volume",
         }
     )
+    if "trade_date" not in df.columns:
+        df = df.rename(columns={df.columns[0]: "trade_date"})
+    df["trade_date"] = pd.to_datetime(df["trade_date"])
 
     # 종목 ID 조회
     stock_id_sql = text("""
@@ -126,20 +131,21 @@ def load_stock_prices(ticker: str, start_date: str, end_date: str):
                 "먼저 종목 정보를 추가하세요."
             )
 
-        # 일별 데이터 적재
-        for _, row in df.iterrows():
-            connection.execute(
-                upsert_sql,
-                {
-                    "stock_id": stock_id,
-                    "trade_date": row["trade_date"].date(),
-                    "open_price": int(row["open_price"]),
-                    "high_price": int(row["high_price"]),
-                    "low_price": int(row["low_price"]),
-                    "close_price": int(row["close_price"]),
-                    "volume": int(row["volume"]),
-                },
-            )
+        # 한 종목의 일별 데이터는 executemany로 한 번에 upsert한다.
+        # 전체 종목 초기 적재 시 DB 왕복 횟수를 크게 줄인다.
+        price_rows = [
+            {
+                "stock_id": stock_id,
+                "trade_date": row.trade_date.date(),
+                "open_price": int(row.open_price),
+                "high_price": int(row.high_price),
+                "low_price": int(row.low_price),
+                "close_price": int(row.close_price),
+                "volume": int(row.volume),
+            }
+            for row in df.itertuples(index=False)
+        ]
+        connection.execute(upsert_sql, price_rows)
 
     # 성공 로그 저장
     save_etl_log(
@@ -216,7 +222,17 @@ def load_latest_stock_prices(ticker: str, end_date: str):
     )
 
 def load_all_latest_stock_prices(end_date: str):
-    ticker_sql = text("SELECT ticker FROM stocks ORDER BY ticker")
+    """이미 초기 적재된 종목만 대상으로 증분 적재한다."""
+    ticker_sql = text("""
+        SELECT s.ticker
+        FROM stocks AS s
+        WHERE EXISTS (
+            SELECT 1
+            FROM stock_prices AS p
+            WHERE p.stock_id = s.stock_id
+        )
+        ORDER BY s.ticker
+    """)
 
     with engine.connect() as connection:
         tickers = connection.execute(ticker_sql).scalars().all()

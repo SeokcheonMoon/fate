@@ -34,3 +34,4 @@ data/raw/
 
 # Processed Data
 data/processed/
+data/predictions/

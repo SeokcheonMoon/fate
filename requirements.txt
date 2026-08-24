@@ -32,6 +32,7 @@ requests
 beautifulsoup4
 lxml
 yfinance
+finance-datareader
 
 # ==========================
 # Streamlit

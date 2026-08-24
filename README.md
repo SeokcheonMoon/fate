@@ -37,7 +37,7 @@ FATE는 국내 주식의 일별 시세와 시장 지표를 수집·저장하고,
 
 - **Language / Analysis:** Python, pandas, NumPy
 - **Database:** MySQL, SQLAlchemy, PyMySQL
-- **Data Collection:** pykrx, yfinance
+- **Data Collection:** FinanceDataReader, yfinance
 - **Environment:** python-dotenv, virtual environment
 - **Planned:** scikit-learn, XGBoost, Streamlit, OpenAI API
 
@@ -77,13 +77,18 @@ Dashboard
 ### 데이터 적재 파이프라인
 
 - `etl/stock_loader.py`
-  - pykrx로 종목별 일별 OHLCV 데이터를 수집
+  - FinanceDataReader(NAVER 소스)로 종목별 일별 OHLCV 데이터를 수집
   - `stocks` 테이블의 모든 종목을 순회하여 `stock_prices`에 적재
   - 동일 종목·일자의 데이터는 갱신하고, 마지막 적재일 이후 데이터만 증분 적재
   - 성공·건너뜀 상태와 처리 건수를 `etl_logs`에 기록
 - `etl/market_loader.py`
   - yfinance에서 KOSPI(`^KS11`) 일별 지수를 수집
   - `market_indicator_values`에 적재하고 마지막 적재일 이후 데이터만 증분 적재
+- `etl/stock_master_loader.py`
+  - FinanceDataReader의 공개 캐시에서 KOSPI·KOSDAQ 전체 종목 코드와 이름을 조회해 `stocks`에 동기화
+- `etl/initial_stock_loader.py`
+  - 아직 주가가 없는 종목만 골라 최근 1년 OHLCV를 배치 단위로 초기 적재
+  - API 요청 부담을 줄이기 위해 기본 50종목씩 처리하며, 재실행하면 다음 종목을 이어서 처리
 
 ### 초기 적재 데이터
 
@@ -110,7 +115,20 @@ py -m etl.stock_loader
 py -m etl.market_loader
 ```
 
-> 실행 전 필요한 라이브러리를 현재 Python 환경에 설치해야 합니다: `py -m pip install pykrx yfinance`
+KOSPI·KOSDAQ 전체 종목을 처음 적재할 때는 아래 순서로 실행합니다.
+
+```powershell
+# 1) 전체 종목 마스터 동기화
+python -m etl.stock_master_loader
+
+# 2) 미적재 종목 50개씩 최근 1년 일별 시세 적재 (반복 실행)
+python -m etl.initial_stock_loader --batch-size 50
+
+# 모든 미적재 종목을 한 번에 처리하려면 장시간 실행될 수 있으므로 명시적으로 실행
+python -m etl.initial_stock_loader --all
+```
+
+> 실행 전 필요한 라이브러리를 현재 Python 환경에 설치해야 합니다: `python -m pip install -r requirements.txt`
 ## 프로젝트 구조
 
 ```
