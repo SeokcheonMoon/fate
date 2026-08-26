@@ -115,6 +115,20 @@ py -m etl.stock_loader
 py -m etl.market_loader
 ```
 
+매 거래일 원천 데이터를 최신화할 때는 주가·KOSPI·투자자 수급을 아래 순서로 갱신합니다.
+
+```powershell
+python -m etl.stock_loader
+python -m etl.market_loader
+python -m etl.investor_flow_pykrx_loader --all
+```
+
+위 세 단계를 한 번에 실행하려면 다음을 사용합니다. 모든 적재기는 실행일 기준으로 마지막 적재일 이후 데이터만 가져옵니다.
+
+```powershell
+python -m etl.daily_update
+```
+
 KOSPI·KOSDAQ 전체 종목을 처음 적재할 때는 아래 순서로 실행합니다.
 
 ```powershell
@@ -193,8 +207,8 @@ FATE/
 - [x] STEP 1: 프로젝트 기획서 작성
 - [x] STEP 2: MySQL 데이터베이스 환경 구축 및 핵심 테이블 설계
 - [x] STEP 3: MySQL SQL 구현 및 주가·KOSPI ETL 파이프라인 구축
-- [ ] STEP 4: Python 분석(EDA, Feature Engineering)
-- [ ] STEP 5: 머신러닝(예측, 이상 탐지)
-- [ ] STEP 6: 대시보드
+- [x] STEP 4: Python 분석(EDA, Feature Engineering)
+- [x] STEP 5: 머신러닝(예측, 이상 탐지)
+- [x] STEP 6: 대시보드
 - [ ] STEP 7: LLM + RAG + Streamlit
 - [ ] STEP 8: GitHub 및 발표 자료 완성

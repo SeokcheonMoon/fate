@@ -1,6 +1,9 @@
+from datetime import date
+
 import FinanceDataReader as fdr
 import pandas as pd
 from sqlalchemy import text
+from tqdm import tqdm
 
 from config.database import engine
 
@@ -237,11 +240,11 @@ def load_all_latest_stock_prices(end_date: str):
     with engine.connect() as connection:
         tickers = connection.execute(ticker_sql).scalars().all()
 
-    for ticker in tickers:
+    for ticker in tqdm(tickers, desc="주가 증분 적재", unit="종목"):
         try:
             load_latest_stock_prices(ticker, end_date)
         except Exception as error:
-            print(f"{ticker} 갱신 실패: {error}")
+            tqdm.write(f"{ticker} 갱신 실패: {error}")
 
 # #  날짜 선택하고 실행시키는 부분(내가 원하는 날짜로 바꿔서 실행시키면 됨)
 # if __name__ == "__main__":
@@ -252,4 +255,4 @@ def load_all_latest_stock_prices(end_date: str):
 
 
 if __name__ == "__main__":
-    load_all_latest_stock_prices(end_date="20260821")
+    load_all_latest_stock_prices(end_date=date.today().strftime("%Y%m%d"))

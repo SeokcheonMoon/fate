@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
@@ -66,7 +67,7 @@ def load_dataset(path: Path) -> pd.DataFrame:
             "analysis/feature_engineering.ipynb를 먼저 모두 실행하세요."
         )
 
-    dataset = pd.read_csv(path, parse_dates=["trade_date"])
+    dataset = pd.read_csv(path, parse_dates=["trade_date"], low_memory=False)
     required_columns = set(FEATURE_COLUMNS + [TARGET_COLUMN, "trade_date", "ticker"])
     missing_columns = required_columns.difference(dataset.columns)
     if missing_columns:
@@ -74,7 +75,17 @@ def load_dataset(path: Path) -> pd.DataFrame:
     if dataset.empty:
         raise ValueError(f"데이터가 비어 있습니다: {path}")
 
-    dataset[TARGET_COLUMN] = dataset[TARGET_COLUMN].astype(int)
+    # 거래량 0일의 변화율처럼 비율 피처에는 +/-inf가 생길 수 있다.
+    # 결측치로 바꾸면 모델 파이프라인의 중앙값 대체 단계가 안전하게 처리한다.
+    dataset[FEATURE_COLUMNS] = dataset[FEATURE_COLUMNS].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    dataset[FEATURE_COLUMNS] = dataset[FEATURE_COLUMNS].replace(
+        [np.inf, -np.inf], np.nan
+    )
+    dataset[TARGET_COLUMN] = pd.to_numeric(
+        dataset[TARGET_COLUMN], errors="raise"
+    ).astype(int)
     return dataset
 
 

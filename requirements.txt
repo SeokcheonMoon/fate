@@ -3,6 +3,7 @@
 # ==========================
 pandas
 numpy
+tqdm
 
 # ==========================
 # Visualization
@@ -33,6 +34,7 @@ beautifulsoup4
 lxml
 yfinance
 finance-datareader
+pykrx
 
 # ==========================
 # Streamlit

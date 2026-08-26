@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import yfinance as yf
 from sqlalchemy import text
@@ -96,4 +96,4 @@ def load_latest_kospi_index(end_date: str):
     )
 
 if __name__ == "__main__":
-    load_latest_kospi_index(end_date="20260821")
+    load_latest_kospi_index(end_date=date.today().strftime("%Y%m%d"))

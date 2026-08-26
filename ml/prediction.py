@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from datetime import datetime
 
 import joblib
+import numpy as np
 import pandas as pd
 
 from ml.train import FEATURE_COLUMNS
@@ -20,6 +22,7 @@ DATA_DIR = PROJECT_ROOT / "data" / "processed"
 PREDICTION_DIR = PROJECT_ROOT / "data" / "predictions"
 INPUT_PATH = DATA_DIR / "fate_prediction_features.csv"
 OUTPUT_PATH = PREDICTION_DIR / "latest_direction_predictions.csv"
+HISTORY_PATH = PREDICTION_DIR / "prediction_history.csv"
 
 MODEL_CANDIDATES = [
     (
@@ -77,11 +80,20 @@ def main() -> None:
             "analysis/feature_engineering.ipynb를 다시 실행하세요."
         )
 
-    features = pd.read_csv(INPUT_PATH, parse_dates=["trade_date"])
+    features = pd.read_csv(INPUT_PATH, parse_dates=["trade_date"], low_memory=False)
     required_columns = set(FEATURE_COLUMNS + ["ticker", "name", "trade_date", "close_price"])
     missing_columns = required_columns.difference(features.columns)
     if missing_columns:
         raise ValueError(f"예측 피처에 필수 컬럼이 없습니다: {sorted(missing_columns)}")
+
+    # 초기 적재된 전체 종목에는 거래량 0일이 있을 수 있다.
+    # 비율 피처의 +/-inf를 결측값으로 바꾸면 학습 때 저장한 imputer가 처리한다.
+    features[FEATURE_COLUMNS] = features[FEATURE_COLUMNS].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    features[FEATURE_COLUMNS] = features[FEATURE_COLUMNS].replace(
+        [np.inf, -np.inf], np.nan
+    )
 
     latest = (
         features.sort_values(["ticker", "trade_date"])
@@ -110,8 +122,23 @@ def main() -> None:
     PREDICTION_DIR.mkdir(parents=True, exist_ok=True)
     result.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
 
+    # 예측 시점의 결과를 보존해야 나중에 실제 다음 거래일 결과와 비교할 수 있다.
+    history_record = result.copy()
+    history_record["generated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+    if HISTORY_PATH.exists():
+        history = pd.read_csv(HISTORY_PATH, encoding="utf-8-sig", dtype={"ticker": str})
+        history = pd.concat([history, history_record], ignore_index=True)
+        # 같은 실행을 다시 저장해도 동일한 예측은 한 번만 유지한다.
+        history = history.drop_duplicates(
+            subset=["trade_date", "ticker", "model"], keep="last"
+        )
+    else:
+        history = history_record
+    history.to_csv(HISTORY_PATH, index=False, encoding="utf-8-sig")
+
     print(f"선택 모델: {selected['name']} (검증 ROC-AUC {selected['score']:.3f})")
     print(f"예측 결과: {OUTPUT_PATH}")
+    print(f"예측 이력: {HISTORY_PATH}")
     print(result.to_string(index=False, formatters={"up_probability": "{:.1%}".format}))
 
 
