@@ -77,7 +77,11 @@ def load_flows(path: Path) -> int:
     require_columns(data, required, path)
     data["ticker"] = data["ticker"].map(normalize_ticker)
     data["trade_date"] = pd.to_datetime(data["trade_date"], errors="raise").dt.date
-    for column in required - {"trade_date", "ticker"}:
+    value_columns = required - {"trade_date", "ticker"}
+    volume_columns = {
+        "foreign_net_volume", "institution_net_volume", "individual_net_volume"
+    }
+    for column in value_columns | (volume_columns & set(data.columns)):
         data[column] = pd.to_numeric(data[column], errors="coerce").fillna(0).astype("int64")
     ids = stock_ids(data["ticker"].unique().tolist())
     data["stock_id"] = data["ticker"].map(ids)
@@ -86,19 +90,27 @@ def load_flows(path: Path) -> int:
         return 0
     data["stock_id"] = data["stock_id"].astype(int)
     data["source"] = data["source"].fillna("KRX CSV") if "source" in data else "KRX CSV"
+    available_volume_columns = [column for column in volume_columns if column in data.columns]
     query = text("""
         INSERT INTO investor_flows (
             stock_id, trade_date, foreign_net_value, institution_net_value,
-            individual_net_value, source
+            individual_net_value, foreign_net_volume, institution_net_volume,
+            individual_net_volume, source
         ) VALUES (
             :stock_id, :trade_date, :foreign_net_value, :institution_net_value,
-            :individual_net_value, :source
+            :individual_net_value, :foreign_net_volume, :institution_net_volume,
+            :individual_net_volume, :source
         ) ON DUPLICATE KEY UPDATE
             foreign_net_value=VALUES(foreign_net_value),
             institution_net_value=VALUES(institution_net_value),
-            individual_net_value=VALUES(individual_net_value), source=VALUES(source)
+            individual_net_value=VALUES(individual_net_value),
+            foreign_net_volume=VALUES(foreign_net_volume),
+            institution_net_volume=VALUES(institution_net_volume),
+            individual_net_volume=VALUES(individual_net_volume), source=VALUES(source)
     """)
-    columns = ["stock_id", "trade_date", "foreign_net_value", "institution_net_value", "individual_net_value", "source"]
+    for column in volume_columns - set(available_volume_columns):
+        data[column] = None
+    columns = ["stock_id", "trade_date", "foreign_net_value", "institution_net_value", "individual_net_value", *sorted(volume_columns), "source"]
     with engine.begin() as connection:
         connection.execute(query, data[columns].to_dict("records"))
     return len(data)

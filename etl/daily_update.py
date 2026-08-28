@@ -1,28 +1,15 @@
-"""FATE 예측용 원천 데이터를 오늘 기준으로 증분 갱신한다.
+"""일일 갱신 진입점.
 
-실행:
-    python -m etl.daily_update
+공식 API 기반 적재기로 전환 중이므로 현재는 외부 웹 데이터 수집을 실행하지
+않는다. 공공데이터포털·Open DART 적재기 연결 후 다시 활성화한다.
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
-
-from etl.investor_flow_pykrx_loader import run_loader
-from etl.market_loader import load_latest_kospi_index
-from etl.stock_loader import load_all_latest_stock_prices
-
-
 def main() -> None:
-    end_date = date.today().strftime("%Y%m%d")
-    print(f"FATE 일일 증분 갱신 시작: {end_date}")
-    load_all_latest_stock_prices(end_date=end_date)
-    load_latest_kospi_index(end_date=end_date)
-    run_loader(
-        tickers=None,
-        requested_start=date.today() - timedelta(days=31),
-        end=date.today(),
-        sleep_seconds=0.4,
+    raise RuntimeError(
+        "외부 웹 기반 일일 수집은 중지되었습니다. "
+        "공식 API 서비스 키를 설정하고 새 적재기를 연결한 뒤 실행하세요."
     )
 
 

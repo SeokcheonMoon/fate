@@ -1,5 +1,6 @@
 # Virtual Environment
 .venv/
+.venv-fate/
 
 # Python
 __pycache__/

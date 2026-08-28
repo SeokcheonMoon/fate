@@ -30,7 +30,7 @@ DATABASE_URL = (
 # DB Engine 생성
 engine = create_engine(
     DATABASE_URL,
-    echo=True,          # 개발 중 SQL 실행 로그 출력
+    echo=False,         # tqdm 진행률을 가리지 않도록 SQL 실행 로그는 기본 비활성화
     pool_pre_ping=True  # 끊긴 연결을 사용 전 확인
 )
 
