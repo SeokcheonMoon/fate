@@ -1,16 +1,17 @@
-"""일일 갱신 진입점.
-
-공식 API 기반 적재기로 전환 중이므로 현재는 외부 웹 데이터 수집을 실행하지
-않는다. 공공데이터포털·Open DART 적재기 연결 후 다시 활성화한다.
-"""
+"""KRX 기반 KOSPI 종목·일별 시세의 일일 증분 갱신 진입점."""
 
 from __future__ import annotations
 
+from datetime import date
+
+from etl.stock_loader import load_all_latest_stock_prices
+from etl.stock_master_loader import load_stock_master
+
+
 def main() -> None:
-    raise RuntimeError(
-        "외부 웹 기반 일일 수집은 중지되었습니다. "
-        "공식 API 서비스 키를 설정하고 새 적재기를 연결한 뒤 실행하세요."
-    )
+    base_date = date.today().strftime("%Y%m%d")
+    load_stock_master(base_date)
+    load_all_latest_stock_prices(base_date)
 
 
 if __name__ == "__main__":

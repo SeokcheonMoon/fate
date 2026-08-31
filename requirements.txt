@@ -16,6 +16,7 @@ seaborn
 # Machine Learning
 # ==========================
 scikit-learn
+scipy
 xgboost
 lightgbm
 
@@ -33,7 +34,6 @@ requests
 beautifulsoup4
 lxml
 yfinance
-finance-datareader
 pykrx
 
 # ==========================

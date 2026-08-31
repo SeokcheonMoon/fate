@@ -1,258 +1,124 @@
-from datetime import date
+"""KRX 유가증권 일별매매정보를 ``stock_prices``에 적재한다."""
 
-import FinanceDataReader as fdr
-import pandas as pd
+from __future__ import annotations
+
+import argparse
+from datetime import date, datetime, timedelta
+
 from sqlalchemy import text
-from tqdm import tqdm
 
 from config.database import engine
+from etl.krx_client import fetch_rows
+
+
+KOSPI_DAILY_TRADE_PATH = "sto/stk_bydd_trd"
+
 
 def save_etl_log(
-    ticker: str,
-    start_date: str,
-    end_date: str,
-    status: str,
-    records_processed: int = 0,
-    error_message: str | None = None,
-):
-    """ETL 실행 결과를 etl_logs 테이블에 저장한다."""
-
+    ticker: str | None, start_date: str, end_date: str, status: str,
+    records_processed: int = 0, error_message: str | None = None,
+) -> None:
+    """ETL 실행 결과를 기록한다. KRX는 시장 단위 요청이라 ticker는 NULL이다."""
     log_sql = text("""
-        INSERT INTO etl_logs (
-            pipeline_name,
-            ticker,
-            start_date,
-            end_date,
-            status,
-            records_processed,
-            error_message
-        )
-        VALUES (
-            'stock_loader',
-            :ticker,
-            :start_date,
-            :end_date,
-            :status,
-            :records_processed,
-            :error_message
-        )
+        INSERT INTO etl_logs (pipeline_name, ticker, start_date, end_date, status,
+                              records_processed, error_message)
+        VALUES ('krx_stock_loader', :ticker, :start_date, :end_date, :status,
+                :records_processed, :error_message)
     """)
-
     with engine.begin() as connection:
-        connection.execute(
-            log_sql,
-            {
-                "ticker": ticker,
-                "start_date": start_date,
-                "end_date": end_date,
-                "status": status,
-                "records_processed": records_processed,
-                "error_message": error_message,
-            },
-        )
+        connection.execute(log_sql, {
+            "ticker": ticker, "start_date": start_date, "end_date": end_date,
+            "status": status, "records_processed": records_processed,
+            "error_message": error_message,
+        })
 
 
-def load_stock_prices(ticker: str, start_date: str, end_date: str):
-    """일별 주가 데이터를 MySQL stock_prices 테이블에 저장한다."""
+def _as_int(value: object) -> int | None:
+    if value in (None, "", "-"):
+        return None
+    return int(str(value).replace(",", ""))
 
-    # FinanceDataReader의 NAVER 소스에서 일별 OHLCV를 조회한다.
-    # KRX 인증 정책 변경에도 계정 없이 종목별 가격을 수집할 수 있다.
-    df = fdr.DataReader(f"NAVER:{ticker}", start_date, end_date)
 
-    # 조회된 데이터가 없으면 로그만 남기고 종료
-    if df.empty:
-        print(f"수집된 데이터가 없습니다: {ticker}")
+def load_stock_prices_for_date(base_date: str) -> int:
+    """한 거래일의 KOSPI 전 종목 OHLCV를 한 번의 API 요청으로 적재한다."""
+    market_rows = fetch_rows(KOSPI_DAILY_TRADE_PATH, base_date)
+    if not market_rows:
+        save_etl_log(None, base_date, base_date, "SKIPPED")
+        print(f"{base_date}: 거래 데이터가 없습니다.")
+        return 0
 
-        save_etl_log(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            status="SKIPPED",
-        )
-        return
-
-    # 인덱스 날짜를 컬럼으로 변환하고 DB 컬럼명에 맞게 변경
-    df = df.reset_index()
-    df = df.rename(
-        columns={
-            "Date": "trade_date",
-            "Open": "open_price",
-            "High": "high_price",
-            "Low": "low_price",
-            "Close": "close_price",
-            "Volume": "volume",
-        }
-    )
-    if "trade_date" not in df.columns:
-        df = df.rename(columns={df.columns[0]: "trade_date"})
-    df["trade_date"] = pd.to_datetime(df["trade_date"])
-
-    # 종목 ID 조회
-    stock_id_sql = text("""
-        SELECT stock_id
-        FROM stocks
-        WHERE ticker = :ticker
-    """)
-
-    # 동일한 종목·날짜 데이터는 업데이트하는 적재 SQL
     upsert_sql = text("""
         INSERT INTO stock_prices (
-            stock_id,
-            trade_date,
-            open_price,
-            high_price,
-            low_price,
-            close_price,
-            volume
+            stock_id, trade_date, open_price, high_price, low_price, close_price, volume
         )
-        VALUES (
-            :stock_id,
-            :trade_date,
-            :open_price,
-            :high_price,
-            :low_price,
-            :close_price,
-            :volume
-        )
+        SELECT stock_id, :trade_date, :open_price, :high_price, :low_price,
+               :close_price, :volume
+        FROM stocks
+        WHERE ticker = :ticker AND market = 'KOSPI'
         ON DUPLICATE KEY UPDATE
-            open_price = VALUES(open_price),
-            high_price = VALUES(high_price),
-            low_price = VALUES(low_price),
-            close_price = VALUES(close_price),
+            open_price = VALUES(open_price), high_price = VALUES(high_price),
+            low_price = VALUES(low_price), close_price = VALUES(close_price),
             volume = VALUES(volume)
     """)
-
+    price_rows = [
+        {
+            "ticker": str(row["ISU_CD"])[-6:],
+            "trade_date": datetime.strptime(str(row.get("BAS_DD", base_date)), "%Y%m%d").date(),
+            "open_price": _as_int(row.get("TDD_OPNPRC")),
+            "high_price": _as_int(row.get("TDD_HGPRC")),
+            "low_price": _as_int(row.get("TDD_LWPRC")),
+            "close_price": _as_int(row.get("TDD_CLSPRC")),
+            "volume": _as_int(row.get("ACC_TRDVOL")),
+        }
+        for row in market_rows
+        if row.get("ISU_CD") and row.get("TDD_CLSPRC") not in (None, "", "-")
+    ]
     with engine.begin() as connection:
-        stock_id = connection.execute(
-            stock_id_sql,
-            {"ticker": ticker},
-        ).scalar()
+        result = connection.execute(upsert_sql, price_rows)
+    processed = result.rowcount
+    save_etl_log(None, base_date, base_date, "SUCCESS", processed)
+    print(f"{base_date}: KOSPI 일별 시세 {processed:,}건 적재 완료")
+    return processed
 
-        if stock_id is None:
-            raise ValueError(
-                f"stocks 테이블에 종목코드 {ticker}가 없습니다. "
-                "먼저 종목 정보를 추가하세요."
-            )
 
-        # 한 종목의 일별 데이터는 executemany로 한 번에 upsert한다.
-        # 전체 종목 초기 적재 시 DB 왕복 횟수를 크게 줄인다.
-        price_rows = [
-            {
-                "stock_id": stock_id,
-                "trade_date": row.trade_date.date(),
-                "open_price": int(row.open_price),
-                "high_price": int(row.high_price),
-                "low_price": int(row.low_price),
-                "close_price": int(row.close_price),
-                "volume": int(row.volume),
-            }
-            for row in df.itertuples(index=False)
-        ]
-        connection.execute(upsert_sql, price_rows)
+def _iter_dates(start_date: str, end_date: str):
+    current = datetime.strptime(start_date, "%Y%m%d").date()
+    final = datetime.strptime(end_date, "%Y%m%d").date()
+    while current <= final:
+        if current.weekday() < 5:
+            yield current.strftime("%Y%m%d")
+        current += timedelta(days=1)
 
-    # 성공 로그 저장
-    save_etl_log(
-        ticker=ticker,
-        start_date=start_date,
-        end_date=end_date,
-        status="SUCCESS",
-        records_processed=len(df),
-    )
 
-    print(f"{ticker}: {len(df)}건 적재 완료")
+def load_all_stock_prices(start_date: str, end_date: str) -> int:
+    """기간 내 KOSPI 전 종목 일별 시세를 날짜별로 적재한다."""
+    return sum(load_stock_prices_for_date(day) for day in _iter_dates(start_date, end_date))
 
-def load_all_stock_prices(start_date: str, end_date: str):
-    """stocks 테이블의 모든 종목에 대해 주가 데이터를 적재한다."""
 
-    ticker_sql = text("""
-        SELECT ticker
-        FROM stocks
-        ORDER BY ticker
-    """)
-
+def load_all_latest_stock_prices(end_date: str | None = None) -> int:
+    """마지막 KOSPI 적재일 다음 거래일부터 증분 적재한다."""
+    end_date = end_date or date.today().strftime("%Y%m%d")
     with engine.connect() as connection:
-        tickers = connection.execute(ticker_sql).scalars().all()
-
-    for ticker in tickers:
-        try:
-            load_stock_prices(ticker, start_date, end_date)
-        except Exception as error:
-            print(f"{ticker} 적재 실패: {error}")
-
-from datetime import timedelta
-
-
-def load_latest_stock_prices(ticker: str, end_date: str):
-    """마지막 적재일 이후의 주가만 추가 적재한다."""
-
-    last_date_sql = text("""
-        SELECT MAX(p.trade_date)
-        FROM stock_prices AS p
-        JOIN stocks AS s
-            ON s.stock_id = p.stock_id
-        WHERE s.ticker = :ticker
-    """)
-
-    with engine.connect() as connection:
-        last_date = connection.execute(
-            last_date_sql,
-            {"ticker": ticker},
-        ).scalar()
-
+        last_date = connection.execute(text("""
+            SELECT MAX(p.trade_date)
+            FROM stock_prices AS p JOIN stocks AS s ON s.stock_id = p.stock_id
+            WHERE s.market = 'KOSPI'
+        """)).scalar()
     if last_date is None:
-        raise ValueError(
-            f"{ticker}의 기존 데이터가 없습니다. "
-            "먼저 전체 기간 데이터를 적재하세요."
-        )
+        raise ValueError("KOSPI 초기 적재가 없습니다. --start-date를 지정해 먼저 적재하세요.")
+    return load_all_stock_prices((last_date + timedelta(days=1)).strftime("%Y%m%d"), end_date)
 
-    start_date = (last_date + timedelta(days=1)).strftime("%Y%m%d")
 
-    if start_date > end_date:
-        print(f"{ticker}: 이미 최신 데이터입니다.")
-
-        save_etl_log(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            status="SKIPPED",
-        )
-        return
-
-    load_stock_prices(
-        ticker=ticker,
-        start_date=start_date,
-        end_date=end_date,
-    )
-
-def load_all_latest_stock_prices(end_date: str):
-    """이미 초기 적재된 종목만 대상으로 증분 적재한다."""
-    ticker_sql = text("""
-        SELECT s.ticker
-        FROM stocks AS s
-        WHERE EXISTS (
-            SELECT 1
-            FROM stock_prices AS p
-            WHERE p.stock_id = s.stock_id
-        )
-        ORDER BY s.ticker
-    """)
-
-    with engine.connect() as connection:
-        tickers = connection.execute(ticker_sql).scalars().all()
-
-    for ticker in tqdm(tickers, desc="주가 증분 적재", unit="종목"):
-        try:
-            load_latest_stock_prices(ticker, end_date)
-        except Exception as error:
-            tqdm.write(f"{ticker} 갱신 실패: {error}")
-
-# #  날짜 선택하고 실행시키는 부분(내가 원하는 날짜로 바꿔서 실행시키면 됨)
-# if __name__ == "__main__":
-#     load_all_stock_prices(
-#         start_date="20250801",
-#         end_date="20260821",
-#     )
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="KRX 유가증권 일별매매정보 적재")
+    parser.add_argument("--start-date", help="초기 적재 시작일(YYYYMMDD)")
+    parser.add_argument("--end-date", default=date.today().strftime("%Y%m%d"))
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    load_all_latest_stock_prices(end_date=date.today().strftime("%Y%m%d"))
+    arguments = parse_arguments()
+    if arguments.start_date:
+        load_all_stock_prices(arguments.start_date, arguments.end_date)
+    else:
+        load_all_latest_stock_prices(arguments.end_date)
