@@ -36,3 +36,6 @@ data/raw/
 # Processed Data
 data/processed/
 data/predictions/
+
+# Generated analysis charts and reports
+analysis/output/

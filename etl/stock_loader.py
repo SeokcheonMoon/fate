@@ -90,9 +90,53 @@ def _iter_dates(start_date: str, end_date: str):
         current += timedelta(days=1)
 
 
-def load_all_stock_prices(start_date: str, end_date: str) -> int:
-    """기간 내 KOSPI 전 종목 일별 시세를 날짜별로 적재한다."""
-    return sum(load_stock_prices_for_date(day) for day in _iter_dates(start_date, end_date))
+def get_completed_dates(start_date: str, end_date: str) -> set[str]:
+    """성공 또는 빈 거래일로 처리된 날짜를 ETL 이력에서 읽는다."""
+    query = text("""
+        SELECT DISTINCT start_date
+        FROM etl_logs
+        WHERE pipeline_name = 'krx_stock_loader'
+          AND status IN ('SUCCESS', 'SKIPPED')
+          AND start_date BETWEEN :start_date AND :end_date
+    """)
+    with engine.connect() as connection:
+        completed = connection.execute(
+            query,
+            {
+                "start_date": datetime.strptime(start_date, "%Y%m%d").date(),
+                "end_date": datetime.strptime(end_date, "%Y%m%d").date(),
+            },
+        ).scalars().all()
+    return {value.strftime("%Y%m%d") for value in completed if value is not None}
+
+
+def load_all_stock_prices(start_date: str, end_date: str, resume: bool = True) -> int:
+    """기간 내 KOSPI 전 종목 일별 시세를 날짜별로 적재한다.
+
+    기본값은 ETL 이력상 완료된 날짜를 건너뛰어 중단 지점부터 재개한다.
+    """
+    completed_dates = get_completed_dates(start_date, end_date) if resume else set()
+    requested_dates = list(_iter_dates(start_date, end_date))
+    pending_dates = [day for day in requested_dates if day not in completed_dates]
+    if completed_dates:
+        print(
+            f"완료 이력 {len(completed_dates):,}일을 건너뛰고 "
+            f"남은 {len(pending_dates):,}일을 적재합니다."
+        )
+    processed = 0
+    for base_date in pending_dates:
+        try:
+            processed += load_stock_prices_for_date(base_date)
+        except Exception as error:
+            save_etl_log(
+                None,
+                base_date,
+                base_date,
+                "FAILED",
+                error_message=str(error)[:1000],
+            )
+            raise
+    return processed
 
 
 def load_all_latest_stock_prices(end_date: str | None = None) -> int:
@@ -113,12 +157,21 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="KRX 유가증권 일별매매정보 적재")
     parser.add_argument("--start-date", help="초기 적재 시작일(YYYYMMDD)")
     parser.add_argument("--end-date", default=date.today().strftime("%Y%m%d"))
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="완료 이력을 무시하고 지정 기간 전체를 다시 적재합니다.",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     arguments = parse_arguments()
     if arguments.start_date:
-        load_all_stock_prices(arguments.start_date, arguments.end_date)
+        load_all_stock_prices(
+            arguments.start_date,
+            arguments.end_date,
+            resume=not arguments.force,
+        )
     else:
         load_all_latest_stock_prices(arguments.end_date)

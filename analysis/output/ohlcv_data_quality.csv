@@ -1,9 +1,9 @@
 ﻿metric,value
-rows,246389
+rows,675189
 stocks,944
-start_date,2025-08-01
+start_date,2023-09-01
 end_date,2026-08-28
 duplicate_stock_dates,0
 missing_ohlcv_cells,0
 zero_or_negative_close,0
-zero_or_negative_volume,6654
+zero_or_negative_volume,11665
