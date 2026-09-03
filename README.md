@@ -166,6 +166,12 @@ python -m analysis.ohlcv_eda
 - `analysis/output/ohlcv_eda_technical_indicators.png`: 삼성전자 기술지표 예시
 - `analysis/output/ohlcv_cda_hypothesis_tests.png`: 피처별 검정 결과
 
+### EDA 시각화
+
+수익률 분포, 피처 간 상관행렬, 거래량 변화율과 다음 거래일 수익률의 관계, 일별 횡단면 IC 추이를 한 화면에서 확인할 수 있습니다.
+
+![KOSPI OHLCV EDA 개요](docs/images/ohlcv_eda_overview.png)
+
 ### 검정 방법
 
 각 거래일에 KOSPI 종목 간 스피어만 상관계수(IC)를 계산하고, 날짜별 IC 평균이 0인지 HAC(Newey-West) 표준오차로 검정했습니다. 8개 가설의 다중검정 문제는 Benjamini-Hochberg FDR 5% 보정으로 처리했습니다.
@@ -184,6 +190,8 @@ python -m analysis.ohlcv_eda
 | 20일 평균 대비 거래량 | +0.0025 | 유의하지 않음 | 단독 예측력 확인 불가 |
 
 이 결과는 OHLCV 관측자료의 통계적 연관성입니다. 인과관계 또는 실현 가능한 매매전략을 증명하지는 않으므로, 다음 단계에서 시간순 검증을 포함한 예측 모델 성능 평가가 필요합니다.
+
+![CDA 피처별 가설검정](docs/images/ohlcv_cda_hypothesis_tests.png)
 
 ## 다음 거래일 상승 예측: 시간순 검증
 
@@ -254,6 +262,8 @@ python -m ml.kospi_market_model_selection
 ```powershell
 python -m ml.kospi_market_holdout_benchmark
 ```
+
+![최종 홀드아웃 모델 비교](docs/images/kospi_market_holdout_benchmark.png)
 
 생성 결과:
 
