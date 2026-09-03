@@ -16,7 +16,7 @@ import streamlit as st
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PREDICTION_PATH = PROJECT_ROOT / "data" / "predictions" / "latest_direction_predictions.csv"
 PERFORMANCE_PATH = PROJECT_ROOT / "data" / "metrics" / "prediction_performance_summary.csv"
-WALK_FORWARD_PATH = PROJECT_ROOT / "data" / "metrics" / "walk_forward_metrics.csv"
+FINAL_BENCHMARK_PATH = PROJECT_ROOT / "ml" / "models" / "kospi_market_holdout_benchmark.csv"
 
 
 st.set_page_config(page_title="FATE | 주가 방향 예측", page_icon="📈", layout="wide")
@@ -45,8 +45,8 @@ def main() -> None:
     st.caption("다음 거래일 상승 확률을 기반으로 한 참고용 분석 화면입니다. 투자 판단의 근거로 단독 사용하지 마세요.")
 
     if not PREDICTION_PATH.exists():
-        st.error("예측 결과 파일을 찾을 수 없습니다. `python -m ml.prediction`을 먼저 실행해 주세요.")
-        st.code("python -m ml.prediction", language="powershell")
+        st.error("예측 결과 파일을 찾을 수 없습니다. 일일 예측 갱신을 먼저 실행해 주세요.")
+        st.code("python -m etl.daily_prediction_update", language="powershell")
         return
 
     predictions = load_predictions(str(PREDICTION_PATH), PREDICTION_PATH.stat().st_mtime)
@@ -81,10 +81,15 @@ def main() -> None:
     else:
         st.info("예측 이력을 쌓은 뒤 `python -m ml.track_prediction_performance`를 실행하면 실제 성과가 표시됩니다.")
 
-    if WALK_FORWARD_PATH.exists():
-        walk_forward = load_optional_csv(str(WALK_FORWARD_PATH), WALK_FORWARD_PATH.stat().st_mtime)
-        if not walk_forward.empty:
-            st.caption(f"워크포워드 평균 ROC-AUC: {walk_forward['roc_auc'].mean():.3f} · {len(walk_forward)}개 구간 검증")
+    if FINAL_BENCHMARK_PATH.exists():
+        benchmark = load_optional_csv(str(FINAL_BENCHMARK_PATH), FINAL_BENCHMARK_PATH.stat().st_mtime)
+        selected_benchmark = benchmark[benchmark["model"] == model_name]
+        if not selected_benchmark.empty:
+            item = selected_benchmark.iloc[0]
+            st.caption(
+                f"최종 홀드아웃: {item['holdout_start']} ~ {item['holdout_end']} · "
+                f"ROC-AUC {item['roc_auc']:.3f} · 상위 20% 상승률 개선 {item['top_quintile_lift']:.1%}p"
+            )
 
     with st.sidebar:
         st.header("필터")
@@ -138,8 +143,10 @@ def main() -> None:
         st.plotly_chart(pie, use_container_width=True)
 
     st.subheader(f"종목별 예측 결과 ({len(filtered):,}개)")
-    table = filtered[["trade_date", "ticker", "name", "close_price", "up_probability", "prediction"]].copy()
-    table.columns = ["기준일", "종목코드", "종목명", "종가", "상승 확률", "예측"]
+    table = filtered[["trade_date", "prediction_rank", "ticker", "name", "close_price", "up_probability", "prediction"]].copy()
+    # ProgressColumn은 값을 그대로 출력하므로 0~1 확률을 0~100 퍼센트로 바꿔 표시한다.
+    table["up_probability"] = table["up_probability"] * 100
+    table.columns = ["기준일", "순위", "종목코드", "종목명", "종가", "상승 확률", "예측"]
     st.dataframe(
         table,
         use_container_width=True,
@@ -147,7 +154,7 @@ def main() -> None:
         column_config={
             "기준일": st.column_config.DateColumn(format="YYYY-MM-DD"),
             "종가": st.column_config.NumberColumn(format="%,d원"),
-            "상승 확률": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.1f%%"),
+            "상승 확률": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.1f%%"),
         },
     )
     st.download_button(

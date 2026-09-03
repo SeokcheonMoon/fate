@@ -187,7 +187,7 @@ python -m analysis.ohlcv_eda
 
 ## 다음 거래일 상승 예측: 시간순 검증
 
-EDA·CDA에서 유의했던 장중 변동성, 5·20일 이동평균 괴리율, 전일 종가 변화율, 거래량 변화율, RSI(14), 종가 대비 MACD를 사용해 Logistic Regression 기준 모델을 만들었습니다.
+EDA·CDA에서 유의했던 장중 변동성, 5·20일 이동평균 괴리율, 전일 종가 변화율, 거래량 변화율, RSI(14), 종가 대비 MACD를 사용해 Logistic Regression 기준 모델을 만들었습니다. 이 모델의 목표는 **종목별 다음 거래일 상승 여부 분류**이며, 목표 주가를 예측하지 않습니다.
 
 ```powershell
 python -m ml.ohlcv_walk_forward
@@ -210,6 +210,112 @@ python -m ml.ohlcv_walk_forward
 - `ml/models/ohlcv_walk_forward_metrics.csv`: 월별 시간순 검증 지표
 - `ml/models/ohlcv_walk_forward_predictions.csv`: 검증 구간의 종목별 확률·예측값
 - `analysis/output/ohlcv_walk_forward_metrics.png`: 월별 성능과 상위 확률 종목의 적중률
+
+## 최종 모델: KOSPI 시장 피처 결합
+
+종목 자체의 OHLCV만으로는 약했던 예측 순위를 보완하기 위해 KOSPI 지수를 2023-09-01부터 2026-08-28까지 725건 보강했습니다. 당일 장 마감까지 알 수 있는 KOSPI 1·5일 수익률, 20일 변동성, 20일 이동평균 괴리율과 종목의 5·20일 상대강도를 종목 피처에 결합했습니다.
+
+```powershell
+# KOSPI 지수 초기 적재 또는 기간 보강
+python -m etl.market_loader --start-date 20230901 --end-date 20260828
+
+# 시장 피처 결합 모델의 기준 성능 확인
+python -m ml.kospi_market_walk_forward
+
+# 전체 피처와 간결 피처 Logistic Regression을 비교해 최종 모델 저장
+python -m ml.kospi_market_model_selection
+```
+
+동일한 29회 확장 윈도우 검증에서 다음과 같이 비교했습니다. 간결 모델은 상관성이 높거나 기여도가 낮았던 5일 이동평균 괴리율, 거래량 변화율, 20일 상대강도를 제외했습니다.
+
+| 모델 | 평균 정확도 | 평균 ROC-AUC | 상위 20% 상승률 개선 | 판단 |
+|---|---:|---:|---:|---|
+| OHLCV 기준 | 50.7% | 0.5247 | +3.98%p | 시장 정보 없이 약한 순위 예측력 |
+| OHLCV + KOSPI 전체 피처 | 52.8% | 0.5627 | +8.46%p | 시장 국면 결합으로 개선 |
+| **OHLCV + KOSPI 간결 피처** | **52.8%** | **0.5628** | **+8.54%p** | **최종 선택** |
+
+최종 입력 피처는 장중 변동성, 20일 이동평균 괴리율, 전일 종가 변화율, RSI(14), 종가 대비 MACD, KOSPI 1·5일 수익률, KOSPI 20일 변동성·이동평균 괴리율, 5일 상대강도입니다. 모든 피처는 예측 기준일 장 마감 시점까지의 정보로 계산했습니다.
+
+최종 모델도 정확도는 다수 클래스 기준선(55.2%)보다 낮습니다. 따라서 “모든 종목의 방향을 맞히는 모델”로 해석하지 않고, **상승 가능성에 따라 종목을 정렬하는 기준 모델**로만 사용합니다. 이 프로젝트 범위에서는 추가적인 복잡 모델 탐색 대신 이 결과를 최종 모델로 기록합니다.
+
+### 트리 모델 최종 비교
+
+로지스틱 회귀만 선택했다는 한계를 확인하기 위해, 간결 시장 결합 피처를 동일하게 사용한 Random Forest·XGBoost·LightGBM도 추가로 비교했습니다. 2026-03-03부터 2026-08-28까지 111,927건을 한 번도 학습에 사용하지 않는 최종 홀드아웃으로 고정했고, 그 이전 532,751건으로 각 모델을 학습했습니다.
+
+| 모델 | 정확도 | ROC-AUC | 상위 20% 상승률 개선 | 판단 |
+|---|---:|---:|---:|---|
+| **Logistic Regression** | 47.9% | **0.5800** | **+10.90%p** | **최종 선택: 확률 순위 선별력 최고** |
+| XGBoost | 55.1% | 0.5660 | +6.32%p | 정확도는 높지만 순위 선별력은 낮음 |
+| LightGBM | 54.6% | 0.5443 | +3.76%p | 개선 폭이 제한적 |
+| Random Forest | 55.4% | 0.5241 | +6.53%p | 방향 정확도는 기준선 근처, 순위 선별력 약함 |
+
+모델 선택 기준은 상승확률의 순위 품질인 ROC-AUC와 상위 20% 선별력입니다. 클래스 균형을 적용한 Logistic Regression은 0.5 임계값 정확도가 낮게 나올 수 있으므로, 정확도만으로 최종 모델을 고르지 않았습니다. 홀드아웃 비교 뒤 선택된 Logistic Regression은 일일 예측에 사용할 수 있도록 전체 이용 가능 기간으로 다시 학습해 저장했습니다.
+
+```powershell
+python -m ml.kospi_market_holdout_benchmark
+```
+
+생성 결과:
+
+- `ml/models/final_kospi_direction_model.joblib`: 최종 시장 결합 간결 Logistic Regression 모델
+- `ml/models/final_kospi_direction_model_summary.json`: 후보별 시간순 검증 결과와 선택 근거
+- `ml/models/kospi_market_model_selection_metrics.csv`: 월별 후보 모델 성능
+- `analysis/output/kospi_market_model_selection.png`: 후보별 ROC-AUC·상위 20% 선별력 비교 차트
+- `ml/models/kospi_market_holdout_benchmark.csv`: 네 모델의 최종 홀드아웃 비교 결과
+- `analysis/output/kospi_market_holdout_benchmark.png`: 네 모델의 ROC-AUC·상위 20% 선별력 비교 차트
+
+## 일일 예측 CSV와 대시보드
+
+모델링 단계 이후에는 아래 한 명령으로 KRX 종목 마스터·일별 시세·KOSPI 지수를 증분 갱신하고, 최종 모델의 종목별 다음 거래일 상승확률을 생성합니다.
+
+```powershell
+python -m etl.daily_prediction_update
+```
+
+당일 KRX 시세가 아직 제공되지 않은 경우에는 마지막 적재 거래일 데이터로 예측을 다시 생성합니다. 최신 피처가 충분한 종목만 예측 대상에 포함되며, 최근 실행에서는 944종목 중 913종목의 예측이 생성됐습니다.
+
+생성 결과:
+
+- `data/predictions/latest_direction_predictions.csv`: 예측 가능한 전 종목의 기준일·종가·상승확률·예측 순위
+- `data/predictions/kospi_top20_predictions.csv`: 상승확률 상위 20개 종목
+- `data/predictions/prediction_history.csv`: 기준일별 예측 이력
+
+대시보드는 같은 CSV를 바로 표시합니다.
+
+```powershell
+streamlit run dashboard/app.py
+```
+
+대시보드에서는 최종 모델의 홀드아웃 ROC-AUC, 상위 확률 종목, 개별 종목 검색·필터·CSV 내려받기를 제공합니다. 예측확률은 분석 참고용 순위이며 투자 권유가 아닙니다.
+
+## 최종 성과와 프로젝트 결론
+
+FATE의 1차 프로젝트 범위는 **공식 데이터 기반의 KOSPI 다음 거래일 방향 분석·검증·일일 예측 화면을 재현 가능하게 완성하는 것**이었습니다. 이 범위는 완료했습니다.
+
+| 구분 | 최종 결과 |
+|---|---|
+| 데이터 기반 | KRX Open API 기반 KOSPI 944종목, OHLCV 675,189건(2023-09-01 ~ 2026-08-28) |
+| 데이터 품질 | 종목·날짜 중복 0건, OHLCV 결측 0건 |
+| 검증 설계 | 확장 윈도우 29회 검증 및 2026-03-03 ~ 2026-08-28 최종 홀드아웃 111,927건 |
+| 최종 모델 | KOSPI 시장 피처를 결합한 간결 Logistic Regression |
+| 후보 비교 | Logistic Regression, Random Forest, XGBoost, LightGBM |
+| 최종 홀드아웃 ROC-AUC | 0.5800 |
+| 상위 20% 상승률 개선 | 전체 종목 대비 +10.90%p |
+| 운영 결과물 | 일일 갱신 명령, 종목별 예측 CSV, 상위 20개 CSV, Streamlit 대시보드 |
+
+### 성능을 어떻게 해석했는가
+
+최종 모델의 0.5 임계값 정확도는 47.9%로 다수 클래스 기준 54.7%보다 낮았습니다. 따라서 FATE를 모든 종목의 상승·하락을 안정적으로 맞히는 모델이나 매매 신호 서비스로 해석하지 않습니다.
+
+반면 최종 홀드아웃 ROC-AUC는 0.5800이고 예측확률 상위 20% 종목의 실제 상승 비율은 전체 종목보다 평균 10.90%p 높았습니다. 즉, OHLCV와 KOSPI 시장 정보에는 **종목의 상승 가능성을 정렬하는 데 쓸 수 있는 약한 정보**가 있었지만, 단기 방향을 확정적으로 예측할 정도로 강하지는 않았습니다.
+
+이는 단순히 데이터 행 수가 부족해서라고 단정하기 어렵습니다. 일별 주가 방향은 뉴스, 공시, 투자자 수급, 업종·재무 상태, 거시 이벤트처럼 현재 모델이 관측하지 않은 요인의 영향을 크게 받고, 하루 단위 레이블 자체도 잡음이 큽니다. 실제로 트리 기반 모델까지 같은 홀드아웃에서 비교했지만 로지스틱 회귀를 넘지 못했습니다. 이 결과는 무리한 모델 복잡화보다 데이터 원천과 검증 방식이 더 중요하다는 판단 근거가 됐습니다.
+
+### 완료 범위와 향후 확장
+
+현재 버전은 포트폴리오·학습 목적의 분석 시스템으로 완료합니다. 실제 투자 의사결정이나 자동매매에는 사용하지 않습니다. 후속 프로젝트로 확장한다면, 검증 기간과 시점을 엄격히 맞춘 공식 투자자 수급·재무·업종·공시/뉴스 데이터를 추가하고 별도 홀드아웃에서 다시 검증해야 합니다.
+
+포트폴리오 발표 자료는 [FATE_포트폴리오.pptx](C:/Develops/fate/docs/FATE_포트폴리오.pptx)에서 확인할 수 있습니다.
 
 ## 프로젝트 구조
 

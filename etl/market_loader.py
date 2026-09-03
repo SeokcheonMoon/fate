@@ -1,3 +1,4 @@
+import argparse
 from datetime import date, datetime, timedelta
 
 import yfinance as yf
@@ -95,5 +96,17 @@ def load_latest_kospi_index(end_date: str):
         end_date=end_date,
     )
 
+def parse_arguments() -> argparse.Namespace:
+    """시장지표 초기 적재와 증분 적재 명령행 인자를 읽는다."""
+    parser = argparse.ArgumentParser(description="KOSPI 지수 적재")
+    parser.add_argument("--start-date", help="초기 적재 시작일(YYYYMMDD)")
+    parser.add_argument("--end-date", default=date.today().strftime("%Y%m%d"))
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    load_latest_kospi_index(end_date=date.today().strftime("%Y%m%d"))
+    arguments = parse_arguments()
+    if arguments.start_date:
+        load_kospi_index(arguments.start_date, arguments.end_date)
+    else:
+        load_latest_kospi_index(arguments.end_date)
