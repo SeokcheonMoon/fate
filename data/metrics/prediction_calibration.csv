@@ -1,0 +1,6 @@
+﻿model,probability_bucket,predictions,mean_predicted_probability,actual_up_rate
+Logistic Regression,0~40%,3,0.3759142696728097,0.6666666666666666
+Logistic Regression,40~50%,87,0.48224703694964194,0.3793103448275862
+Logistic Regression,50~60%,1739,0.5234350706929733,0.520414031052329
+Logistic Regression,60~70%,0,,
+Logistic Regression,70~100%,1,0.7793282607683928,1.0

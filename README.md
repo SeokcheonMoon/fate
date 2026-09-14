@@ -4,6 +4,38 @@
 
 FATE는 국내 주식의 정제된 시세 데이터를 바탕으로 시장 흐름을 분석하고, 예측 모델·대시보드·LLM 기반 인사이트로 확장하는 금융 데이터 분석 프로젝트입니다.
 
+## 일일 운영
+
+```powershell
+# 시세 갱신 · 다음 거래일 예측 생성 · 이전 예측 성과 확정
+python -m etl.daily_prediction_update
+
+# 대시보드 조회
+streamlit run dashboard/app.py
+```
+
+```text
+daily_prediction_update
+  ├─ daily_update: 당일 시장·종목 데이터 갱신
+  ├─ kospi_daily_prediction: 종목별 다음 거래일 상승/하락 예측 생성
+  └─ track_prediction_performance: 이전 예측과 실제 결과 비교
+       → 성공/실패 및 일별 성공률 저장
+
+dashboard/app.py
+  └─ 저장된 예측·성과 파일을 화면에 표시
+```
+
+`daily_prediction_update`에 데이터 갱신이 포함되어 있으므로, 일상 운영에서는 `etl.daily_update`를 별도로 실행할 필요가 없습니다.
+
+### 예측 성과 판정 기준
+
+- 예측 기준일(D) 장 마감 뒤의 종가와 피처로 D+1 거래일 방향을 예측해 이력에 저장합니다.
+- D+1 거래일 종가가 공식 데이터로 수집된 뒤, `D+1 종가 / D 종가 - 1`이 양수이면 실제 상승, 그 외에는 실제 하락 또는 보합으로 판정합니다.
+- 예측 방향과 실제 방향이 같으면 `성공`, 다르면 `실패`입니다. D+1 종가가 아직 없으면 `확인 대기`로 표시합니다.
+- 성과 판정은 최신 DB 시세를 직접 비교하므로, 다음 거래일 종가가 확인된 예측만 일별 성공률에 포함됩니다.
+
+대시보드에서는 예측 기준일과 모델을 선택해 과거 예측의 종목별 판정, 해당 일자의 성공 수·성공률, 일별 성공률 추이를 확인할 수 있습니다.
+
 ## 핵심 기술 및 활용 요약
 
 | 기술 | 프로젝트 활용 방식 | 핵심 가치 |
@@ -303,14 +335,16 @@ python -m etl.daily_prediction_update
 - `data/predictions/latest_direction_predictions.csv`: 예측 가능한 전 종목의 기준일·종가·상승확률·예측 순위
 - `data/predictions/kospi_top20_predictions.csv`: 상승확률 상위 20개 종목
 - `data/predictions/prediction_history.csv`: 기준일별 예측 이력
+- `data/metrics/prediction_performance_detail.csv`: 종목별 실제 방향·성공/실패 판정
+- `data/metrics/prediction_performance_daily.csv`: 모델·예측 기준일별 확정 예측 수·성공 수·성공률
 
-대시보드는 같은 CSV를 바로 표시합니다.
+대시보드는 예측 이력을 기준으로 과거 날짜와 모델을 선택해 표시합니다.
 
 ```powershell
 streamlit run dashboard/app.py
 ```
 
-대시보드에서는 최종 모델의 홀드아웃 ROC-AUC, 상위 확률 종목, 개별 종목 검색·필터·CSV 내려받기를 제공합니다. 예측확률은 분석 참고용 순위이며 투자 권유가 아닙니다.
+대시보드에서는 최종 모델의 홀드아웃 ROC-AUC, 상위 확률 종목, 개별 종목 검색·필터·CSV 내려받기, 과거 예측의 성공/실패 및 일별 성공률을 제공합니다. 예측확률은 분석 참고용 순위이며 투자 권유가 아닙니다.
 
 ## 최종 성과와 프로젝트 결론
 

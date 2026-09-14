@@ -1,0 +1,2 @@
+﻿model,evaluated_predictions,accuracy,roc_auc,brier_score,mean_actual_return,latest_actual_date
+Logistic Regression,1830,0.5251366120218579,0.5874132895980988,0.24829573343884542,0.0038325045446800333,2026-09-02

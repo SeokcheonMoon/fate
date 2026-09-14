@@ -6,11 +6,14 @@
 
 from etl.daily_update import main as update_market_data
 from ml.kospi_daily_prediction import main as create_predictions
+from ml.track_prediction_performance import main as update_prediction_performance
 
 
 def main() -> None:
     update_market_data()
     create_predictions()
+    # 다음 거래일의 실제 결과가 새로 들어온 기존 예측을 함께 채점한다.
+    update_prediction_performance()
 
 
 if __name__ == "__main__":
