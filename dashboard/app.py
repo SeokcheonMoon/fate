@@ -6,14 +6,20 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from llm.report_generator import build_report_context, create_report_pdf, generate_report
+
+
 PREDICTION_PATH = PROJECT_ROOT / "data" / "predictions" / "latest_direction_predictions.csv"
 HISTORY_PATH = PROJECT_ROOT / "data" / "predictions" / "prediction_history.csv"
 PERFORMANCE_PATH = PROJECT_ROOT / "data" / "metrics" / "prediction_performance_summary.csv"
@@ -253,6 +259,61 @@ def main() -> None:
         file_name="fate_direction_predictions.csv",
         mime="text/csv",
     )
+
+    st.divider()
+    st.subheader("투자자용 AI 리포트 발행")
+    st.caption(
+        "선택한 기준일·모델과 현재 필터링 결과를 사실표로 구성해 리포트를 만듭니다. "
+        "예측확률은 실제 수익률이나 투자 권고가 아닙니다."
+    )
+    report_context = build_report_context(
+        selected_date=selected_date,
+        model_name=model_name,
+        predictions=predictions,
+        displayed_predictions=filtered,
+        performance=performance if PERFORMANCE_PATH.exists() else None,
+        daily_performance=daily_performance if DAILY_PERFORMANCE_PATH.exists() else None,
+    )
+    provider = st.radio("리포트 생성 방식", ["OpenAI", "Gemini", "기본"], horizontal=True)
+    default_model = (
+        "gpt-5-mini" if provider == "OpenAI" else "gemini-3.8-flash" if provider == "Gemini" else ""
+    )
+    api_key = ""
+    model = ""
+    if provider != "기본":
+        key_column, model_column = st.columns(2)
+        with key_column:
+            api_key = st.text_input(
+                f"{provider} API 발급 키",
+                type="password",
+                help="키는 환경 변수나 파일에 저장하지 않으며, 현재 화면 세션에서 리포트를 생성할 때만 사용합니다.",
+            )
+        with model_column:
+            model = st.text_input("사용 모델", value=default_model)
+    if st.button("리포트 발행", type="primary"):
+        try:
+            with st.spinner("리포트를 생성하고 있습니다..."):
+                result = generate_report(
+                    report_context, provider=provider, api_key=api_key, model=model
+                )
+                report_pdf = create_report_pdf(result.content, selected_date.strftime("%Y-%m-%d"))
+            st.session_state["issued_investor_report"] = result.content
+            st.session_state["issued_investor_report_source"] = result.source
+            st.session_state["issued_investor_report_pdf"] = report_pdf
+        except RuntimeError as exc:
+            st.error(str(exc))
+
+    report_content = st.session_state.get("issued_investor_report")
+    if report_content:
+        st.success(f"리포트가 발행되었습니다. · {st.session_state.get('issued_investor_report_source', '')}")
+        st.markdown(report_content)
+        report_file_name = f"fate_market_report_{selected_date:%Y%m%d}.pdf"
+        st.download_button(
+            "리포트 PDF 내려받기",
+            data=st.session_state["issued_investor_report_pdf"],
+            file_name=report_file_name,
+            mime="application/pdf",
+        )
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
 ﻿model,trade_date,evaluated_predictions,successful_predictions,accuracy,mean_actual_return
+Logistic Regression,2026-09-11,918,577,0.6285403050108932,-0.011880197421345138
 Logistic Regression,2026-09-02,917,535,0.5834242093784079,0.0072733994957777425
 Logistic Regression,2026-08-28,913,426,0.4665936473165389,0.0003765344787910965
